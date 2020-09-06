@@ -51,7 +51,9 @@ namespace Microsoft.CodeAnalysis.CSharp.IntroduceVariable
             // we're adding.  That way we don't end up having it and the starting statement be on
             // the same line (which will cause indentation to be computed incorrectly).
             var text = await document.Document.GetTextAsync(cancellationToken).ConfigureAwait(false);
-            if (!text.AreOnSameLine(containerToGenerateInto.GetFirstToken(), containerToGenerateInto.GetLastToken()))
+            var firstAndLastContainerTokensOnSameLine =
+                text.AreOnSameLine(containerToGenerateInto.GetFirstToken(), containerToGenerateInto.GetLastToken());
+            if (!firstAndLastContainerTokensOnSameLine)
             {
                 declarationStatement = declarationStatement.WithAppendedTrailingTrivia(SyntaxFactory.ElasticCarriageReturnLineFeed);
             }
@@ -60,7 +62,8 @@ namespace Microsoft.CodeAnalysis.CSharp.IntroduceVariable
             {
                 case BlockSyntax block:
                     return await IntroduceLocalDeclarationIntoBlockAsync(
-                        document, block, expression, newLocalName, declarationStatement, allOccurrences, cancellationToken).ConfigureAwait(false);
+                        document, block, expression, newLocalName, declarationStatement, allOccurrences, firstAndLastContainerTokensOnSameLine, cancellationToken)
+                        .ConfigureAwait(false);
 
                 case ArrowExpressionClauseSyntax arrowExpression:
                     // this will be null for expression-bodied properties & indexer (not for individual getters & setters, those do have a symbol),
@@ -282,6 +285,7 @@ namespace Microsoft.CodeAnalysis.CSharp.IntroduceVariable
             NameSyntax newLocalName,
             LocalDeclarationStatementSyntax declarationStatement,
             bool allOccurrences,
+            bool containerTokensOnSameLine,
             CancellationToken cancellationToken)
         {
             declarationStatement = declarationStatement.WithAdditionalAnnotations(Formatter.Annotation);
@@ -343,6 +347,12 @@ namespace Microsoft.CodeAnalysis.CSharp.IntroduceVariable
 
             var statements = InsertWithinTriviaOfNext(GetStatements(newInnerMostBlock), declarationStatement, firstStatementAffectedIndex);
             var finalInnerMostBlock = WithStatements(newInnerMostBlock, statements);
+
+            if (innermostCommonBlock.Parent.IsAnyLambda() && !containerTokensOnSameLine)
+            {
+                // This could also be applied to newInnerMostBlock
+                finalInnerMostBlock = finalInnerMostBlock.WithAppendedTrailingTrivia(SyntaxFactory.ElasticCarriageReturnLineFeed);
+            }
 
             var newRoot = root.ReplaceNode(innermostCommonBlock, finalInnerMostBlock);
             return document.Document.WithSyntaxRoot(newRoot);
