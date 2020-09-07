@@ -51,9 +51,7 @@ namespace Microsoft.CodeAnalysis.CSharp.IntroduceVariable
             // we're adding.  That way we don't end up having it and the starting statement be on
             // the same line (which will cause indentation to be computed incorrectly).
             var text = await document.Document.GetTextAsync(cancellationToken).ConfigureAwait(false);
-            var firstAndLastContainerTokensOnSameLine =
-                text.AreOnSameLine(containerToGenerateInto.GetFirstToken(), containerToGenerateInto.GetLastToken());
-            if (!firstAndLastContainerTokensOnSameLine)
+            if (!text.AreOnSameLine(containerToGenerateInto.GetFirstToken(), containerToGenerateInto.GetLastToken()))
             {
                 declarationStatement = declarationStatement.WithAppendedTrailingTrivia(SyntaxFactory.ElasticCarriageReturnLineFeed);
             }
@@ -62,7 +60,7 @@ namespace Microsoft.CodeAnalysis.CSharp.IntroduceVariable
             {
                 case BlockSyntax block:
                     return await IntroduceLocalDeclarationIntoBlockAsync(
-                        document, block, expression, newLocalName, declarationStatement, allOccurrences, firstAndLastContainerTokensOnSameLine, cancellationToken)
+                        document, block, expression, newLocalName, declarationStatement, allOccurrences, cancellationToken)
                         .ConfigureAwait(false);
 
                 case ArrowExpressionClauseSyntax arrowExpression:
@@ -285,7 +283,6 @@ namespace Microsoft.CodeAnalysis.CSharp.IntroduceVariable
             NameSyntax newLocalName,
             LocalDeclarationStatementSyntax declarationStatement,
             bool allOccurrences,
-            bool containerTokensOnSameLine,
             CancellationToken cancellationToken)
         {
             declarationStatement = declarationStatement.WithAdditionalAnnotations(Formatter.Annotation);
@@ -348,10 +345,9 @@ namespace Microsoft.CodeAnalysis.CSharp.IntroduceVariable
             var statements = InsertWithinTriviaOfNext(GetStatements(newInnerMostBlock), declarationStatement, firstStatementAffectedIndex);
             var finalInnerMostBlock = WithStatements(newInnerMostBlock, statements);
 
-            if (innermostCommonBlock.Parent.IsAnyLambda() && !containerTokensOnSameLine)
+            if (innermostCommonBlock.Parent.IsAnyLambda())
             {
-                // This could also be applied to newInnerMostBlock
-                finalInnerMostBlock = finalInnerMostBlock.WithAppendedTrailingTrivia(SyntaxFactory.ElasticCarriageReturnLineFeed);
+                finalInnerMostBlock = finalInnerMostBlock.WithTrailingTrivia(declarationStatement.GetTrailingTrivia());
             }
 
             var newRoot = root.ReplaceNode(innermostCommonBlock, finalInnerMostBlock);
